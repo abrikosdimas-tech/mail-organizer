@@ -1,8 +1,3 @@
-/* ============================================
-   Mail Organizer — App Logic v2
-   Groups, Select All, Copy, Minimal
-   ============================================ */
-
 (function () {
     'use strict';
 
@@ -11,116 +6,221 @@
 
     let mails = loadData(STORAGE_KEY, []);
     let groups = loadData(GROUPS_KEY, []);
-    let currentGroup = 'all';
     let searchQuery = '';
     let editingId = null;
     let deletingId = null;
     let commentingId = null;
+    let pickingGroupId = null; // for adding to group via modal
 
-    // ===== DOM =====
-    const $ = (s) => document.getElementById(s);
-    const $container = $('mail-items-container');
+    const $ = s => document.getElementById(s);
+    const $sections = $('sections-container');
     const $emptyState = $('empty-state');
     const $searchInput = $('search-input');
-    const $groupTabs = $('group-tabs');
     const $toast = $('toast');
 
-    // Add modal
     const $modalOverlay = $('modal-overlay');
     const $modalTitleText = $('modal-title-text');
     const $inputEmail = $('input-email');
     const $inputName = $('input-name');
     const $inputComment = $('input-comment');
-    const $inputGroupSelect = $('input-group-select');
 
-    // Group modal
     const $groupModalOverlay = $('group-modal-overlay');
-    const $groupModalTitle = $('group-modal-title');
     const $inputGroupName = $('input-group-name');
     const $existingGroups = $('existing-groups');
 
-    // Comment modal
+    const $pickerOverlay = $('picker-overlay');
+    const $pickerList = $('picker-list');
+    const $pickerEmpty = $('picker-empty');
+    const $pickerTitle = $('picker-title');
+    let selectedForGroup = new Set();
+
     const $commentOverlay = $('comment-overlay');
     const $commentTextarea = $('comment-textarea');
     const $commentEmailPreview = $('comment-email-preview');
 
-    // Delete modal
     const $deleteOverlay = $('delete-overlay');
     const $deleteEmailText = $('delete-email-text');
 
-    // ===== HELPERS =====
-    function uid() {
-        return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
-    }
-
-    function loadData(key, fallback) {
-        try {
-            const d = localStorage.getItem(key);
-            return d ? JSON.parse(d) : fallback;
-        } catch { return fallback; }
-    }
-
+    // === Helpers ===
+    function uid() { return Date.now().toString(36) + Math.random().toString(36).substring(2, 8); }
+    function loadData(k, fb) { try { const d = localStorage.getItem(k); return d ? JSON.parse(d) : fb; } catch { return fb; } }
     function saveMails() { localStorage.setItem(STORAGE_KEY, JSON.stringify(mails)); }
     function saveGroups() { localStorage.setItem(GROUPS_KEY, JSON.stringify(groups)); }
-
-    function esc(text) {
-        const d = document.createElement('div');
-        d.textContent = text;
-        return d.innerHTML;
-    }
+    function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
 
     function showToast(msg) {
         $toast.textContent = msg;
         $toast.classList.remove('hidden');
         $toast.classList.add('visible');
-        setTimeout(() => {
-            $toast.classList.remove('visible');
-            setTimeout(() => $toast.classList.add('hidden'), 300);
-        }, 1500);
+        setTimeout(() => { $toast.classList.remove('visible'); setTimeout(() => $toast.classList.add('hidden'), 300); }, 1500);
     }
 
     function copyToClipboard(text) {
         if (navigator.clipboard) {
-            navigator.clipboard.writeText(text).then(() => showToast('Скопировано: ' + text));
+            navigator.clipboard.writeText(text).then(() => showToast('Скопировано'));
         } else {
-            // Fallback
             const ta = document.createElement('textarea');
             ta.value = text;
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
+            ta.style.cssText = 'position:fixed;opacity:0';
             document.body.appendChild(ta);
             ta.select();
             document.execCommand('copy');
             document.body.removeChild(ta);
-            showToast('Скопировано: ' + text);
+            showToast('Скопировано');
         }
         if (navigator.vibrate) navigator.vibrate(10);
     }
 
-    // ===== GROUPS =====
-    function renderGroupTabs() {
-        let html = '<button class="group-tab ' + (currentGroup === 'all' ? 'active' : '') + '" data-group="all">Все</button>';
-        groups.forEach(g => {
-            html += `<button class="group-tab ${currentGroup === g.id ? 'active' : ''}" data-group="${g.id}">
-                ${esc(g.name)}<span class="tab-delete" data-delete-group="${g.id}"> ✕</span>
-            </button>`;
-        });
-        $groupTabs.innerHTML = html;
+    // === Render ===
+    function filterMails(list) {
+        if (!searchQuery.trim()) return list;
+        const q = searchQuery.toLowerCase().trim();
+        return list.filter(m =>
+            m.email.toLowerCase().includes(q) ||
+            m.name.toLowerCase().includes(q) ||
+            (m.comment && m.comment.toLowerCase().includes(q))
+        );
     }
 
-    function renderGroupSelect(selectedId) {
-        let html = '<option value="">Без группы</option>';
-        groups.forEach(g => {
-            html += `<option value="${g.id}" ${selectedId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`;
-        });
-        $inputGroupSelect.innerHTML = html;
+    function renderMailItem(mail, showRemoveBtn = false) {
+        return `
+        <div class="mail-item" data-id="${mail.id}" draggable="true">
+            <div class="toggle-container">
+                <button class="toggle-switch ${mail.status === 'checked' ? 'on' : ''}" data-id="${mail.id}"></button>
+            </div>
+            <div class="mail-info">
+                <div class="mail-email-row">
+                    <span class="mail-email">${esc(mail.email)}</span>
+                    <button class="copy-btn" data-copy="${esc(mail.email)}" title="Копировать">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                    </button>
+                </div>
+                ${mail.name ? `<div class="mail-name">${esc(mail.name)}</div>` : ''}
+                ${mail.comment ? `<div class="mail-comment-preview">💬 ${esc(mail.comment)}</div>` : ''}
+            </div>
+            ${showRemoveBtn ? `
+            <button class="remove-from-group-btn" data-remove="${mail.id}" title="Убрать из группы">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            ` : ''}
+            <div class="mail-actions">
+                <button class="action-icon-btn comment-btn ${mail.comment ? 'has-comment' : ''}" data-id="${mail.id}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                </button>
+                <button class="action-icon-btn delete-btn" data-id="${mail.id}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                </button>
+            </div>
+        </div>`;
     }
 
-    function renderExistingGroups() {
-        if (groups.length === 0) {
-            $existingGroups.innerHTML = '';
+    function render() {
+        const allFiltered = filterMails(mails);
+
+        if (allFiltered.length === 0 && mails.length === 0) {
+            $sections.innerHTML = '';
+            $emptyState.classList.remove('hidden');
             return;
         }
+        $emptyState.classList.add('hidden');
+
+        const ungrouped = allFiltered.filter(m => !m.groupId);
+        const grouped = {};
+        groups.forEach(g => { grouped[g.id] = []; });
+        allFiltered.forEach(m => { if (m.groupId && grouped[m.groupId]) grouped[m.groupId].push(m); });
+
+        let html = '';
+
+        groups.forEach(g => {
+            const items = grouped[g.id] || [];
+            if (items.length === 0 && searchQuery.trim()) return;
+            html += `
+            <div class="group-section" data-group-id="${g.id}">
+                <div class="group-section-header">
+                    <div class="group-section-left">
+                        <span class="group-section-title">${esc(g.name)}</span>
+                        <span class="group-section-count">${items.length}</span>
+                    </div>
+                    <button class="group-add-btn" data-add-to="${g.id}" title="Добавить почту">+</button>
+                </div>
+                <div class="group-section-items" data-group-id="${g.id}">
+                    ${items.length > 0 ? items.map(m => renderMailItem(m, true)).join('') : '<div class="mail-item" style="justify-content:center;color:var(--text-faint);font-size:13px;padding:16px;border:none;">Перетащите сюда или нажмите +</div>'}
+                </div>
+            </div>`;
+        });
+
+        if (ungrouped.length > 0 || groups.length > 0) {
+            const title = groups.length > 0 ? 'Без группы' : 'Все почты';
+            if (ungrouped.length > 0) {
+                html += `
+                <div class="group-section" data-group-id="">
+                    <div class="group-section-header">
+                        <div class="group-section-left">
+                            <span class="group-section-title">${title}</span>
+                            <span class="group-section-count">${ungrouped.length}</span>
+                        </div>
+                    </div>
+                    <div class="group-section-items" data-group-id="">
+                        ${ungrouped.map(m => renderMailItem(m, false)).join('')}
+                    </div>
+                </div>`;
+            }
+        }
+
+        if (groups.length === 0 && ungrouped.length > 0) {
+            html = `
+            <div class="group-section" data-group-id="">
+                <div class="group-section-header">
+                    <span class="group-section-title">Все почты</span>
+                    <span class="group-section-count">${ungrouped.length}</span>
+                </div>
+                <div class="group-section-items" data-group-id="">
+                    ${ungrouped.map(m => renderMailItem(m, false)).join('')}
+                </div>
+            </div>`;
+        }
+
+        if (!html && searchQuery.trim()) {
+            html = '<div class="empty-state"><p class="empty-text">Ничего не найдено</p></div>';
+        }
+
+        $sections.innerHTML = html;
+        setupDragAndDrop();
+    }
+
+    // === Select All ===
+    function toggleSelectAll() {
+        if (mails.length === 0) return;
+        const allOn = mails.every(m => m.status === 'checked');
+        mails.forEach(m => m.status = allOn ? 'unchecked' : 'checked');
+        saveMails();
+        render();
+        if (navigator.vibrate) navigator.vibrate(10);
+    }
+
+    function toggleStatus(id) {
+        const mail = mails.find(m => m.id === id);
+        if (!mail) return;
+        mail.status = mail.status === 'checked' ? 'unchecked' : 'checked';
+        saveMails();
+        const toggle = document.querySelector(`.toggle-switch[data-id="${id}"]`);
+        if (toggle) toggle.classList.toggle('on', mail.status === 'checked');
+        if (navigator.vibrate) navigator.vibrate(10);
+    }
+
+    // === Group Management ===
+    function renderExistingGroups() {
+        if (groups.length === 0) { $existingGroups.innerHTML = ''; return; }
         let html = '<p class="existing-groups-title">Существующие группы</p>';
         groups.forEach(g => {
             const count = mails.filter(m => m.groupId === g.id).length;
@@ -132,117 +232,92 @@
         $existingGroups.innerHTML = html;
     }
 
-    // ===== RENDER =====
-    function getFiltered() {
-        let result = mails;
-        if (currentGroup !== 'all') {
-            result = result.filter(m => m.groupId === currentGroup);
-        }
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase().trim();
-            result = result.filter(m =>
-                m.email.toLowerCase().includes(q) ||
-                m.name.toLowerCase().includes(q) ||
-                (m.comment && m.comment.toLowerCase().includes(q))
-            );
-        }
-        return result;
+    function openGroupModal() {
+        $inputGroupName.value = '';
+        renderExistingGroups();
+        $groupModalOverlay.classList.remove('hidden');
+        setTimeout(() => $inputGroupName.focus(), 350);
+    }
+    function closeGroupModal() { $groupModalOverlay.classList.add('hidden'); }
+    function saveGroup() {
+        const name = $inputGroupName.value.trim();
+        if (!name) return;
+        groups.push({ id: uid(), name });
+        saveGroups();
+        $inputGroupName.value = '';
+        renderExistingGroups();
+        render();
+    }
+    function deleteGroup(groupId) {
+        groups = groups.filter(g => g.id !== groupId);
+        mails.forEach(m => { if (m.groupId === groupId) m.groupId = ''; });
+        saveGroups(); saveMails();
+        renderExistingGroups();
+        render();
     }
 
-    function render() {
-        const filtered = getFiltered();
-        renderGroupTabs();
-
-        if (filtered.length === 0) {
-            $container.innerHTML = '';
-            $emptyState.classList.remove('hidden');
-            return;
-        }
-
-        $emptyState.classList.add('hidden');
-        $container.innerHTML = filtered.map((mail, i) => {
-            const group = groups.find(g => g.id === mail.groupId);
-            return `
-            <div class="mail-item" data-id="${mail.id}" style="animation-delay:${i * 0.03}s">
-                <button class="mail-checkbox ${mail.status}" data-id="${mail.id}">
-                    <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                    <svg class="cross-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                </button>
-                <div class="mail-info">
-                    <div class="mail-email-row">
-                        <span class="mail-email">${esc(mail.email)}</span>
-                        <button class="copy-btn" data-copy="${esc(mail.email)}" title="Копировать">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                            </svg>
-                        </button>
+    // === Picker Modal ===
+    function openPickerModal(groupId) {
+        pickingGroupId = groupId;
+        const group = groups.find(g => g.id === groupId);
+        $pickerTitle.textContent = `Добавить в «${group ? group.name : ''}»`;
+        selectedForGroup = new Set();
+        
+        const available = mails.filter(m => !m.groupId);
+        if (available.length === 0) {
+            $pickerList.innerHTML = '';
+            $pickerEmpty.classList.remove('hidden');
+        } else {
+            $pickerEmpty.classList.add('hidden');
+            $pickerList.innerHTML = available.map(m => `
+                <div class="picker-item" data-id="${m.id}">
+                    <div class="picker-checkbox">
+                        <svg class="picker-checkbox-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
                     </div>
-                    ${mail.name ? `<div class="mail-name">${esc(mail.name)}</div>` : ''}
-                    ${group ? `<span class="mail-group-tag">${esc(group.name)}</span>` : ''}
-                    ${mail.comment ? `<div class="mail-comment-preview">💬 ${esc(mail.comment)}</div>` : ''}
+                    <div>
+                        <div class="picker-email">${esc(m.email)}</div>
+                        ${m.name ? `<div class="picker-name">${esc(m.name)}</div>` : ''}
+                    </div>
                 </div>
-                <div class="mail-actions">
-                    <button class="action-icon-btn comment-btn ${mail.comment ? 'has-comment' : ''}" data-id="${mail.id}">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                        </svg>
-                    </button>
-                    <button class="action-icon-btn delete-btn" data-id="${mail.id}">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        </svg>
-                    </button>
-                </div>
-            </div>`;
-        }).join('');
+            `).join('');
+        }
+        $pickerOverlay.classList.remove('hidden');
     }
 
-    // ===== SELECT ALL =====
-    function toggleSelectAll() {
-        const filtered = getFiltered();
-        if (filtered.length === 0) return;
+    function togglePickerItem(id, itemEl) {
+        if (selectedForGroup.has(id)) {
+            selectedForGroup.delete(id);
+            itemEl.classList.remove('selected');
+        } else {
+            selectedForGroup.add(id);
+            itemEl.classList.add('selected');
+        }
+    }
 
-        const allChecked = filtered.every(m => m.status === 'checked');
-        const newStatus = allChecked ? 'unchecked' : 'checked';
-        filtered.forEach(m => m.status = newStatus);
+    function savePicker() {
+        if (!pickingGroupId) return;
+        mails.forEach(m => {
+            if (selectedForGroup.has(m.id)) {
+                m.groupId = pickingGroupId;
+            }
+        });
         saveMails();
         render();
-        if (navigator.vibrate) navigator.vibrate(10);
+        $pickerOverlay.classList.add('hidden');
     }
 
-    // ===== TOGGLE CHECKBOX =====
-    function toggleStatus(id) {
-        const mail = mails.find(m => m.id === id);
-        if (!mail) return;
-        mail.status = mail.status === 'checked' ? 'unchecked' : 'checked';
-        saveMails();
-
-        const cb = document.querySelector(`.mail-checkbox[data-id="${id}"]`);
-        if (cb) {
-            cb.classList.remove('checked', 'unchecked');
-            cb.classList.add(mail.status);
-        }
-        if (navigator.vibrate) navigator.vibrate(10);
-    }
-
-    // ===== MODALS =====
+    // === Standard Modals ===
     function openAddModal() {
         editingId = null;
         $modalTitleText.textContent = 'Новая почта';
         $inputEmail.value = '';
         $inputName.value = '';
         $inputComment.value = '';
-        renderGroupSelect('');
         $modalOverlay.classList.remove('hidden');
         setTimeout(() => $inputEmail.focus(), 350);
     }
-
     function openEditModal(id) {
         const mail = mails.find(m => m.id === id);
         if (!mail) return;
@@ -251,67 +326,24 @@
         $inputEmail.value = mail.email;
         $inputName.value = mail.name;
         $inputComment.value = mail.comment;
-        renderGroupSelect(mail.groupId || '');
         $modalOverlay.classList.remove('hidden');
         setTimeout(() => $inputEmail.focus(), 350);
     }
-
     function closeAddModal() { $modalOverlay.classList.add('hidden'); editingId = null; }
-
     function saveModal() {
         const email = $inputEmail.value.trim();
-        if (!email) {
-            $inputEmail.style.borderColor = 'var(--red)';
-            setTimeout(() => $inputEmail.style.borderColor = '', 1500);
-            return;
-        }
+        if (!email) { $inputEmail.style.borderColor = 'var(--red)'; setTimeout(() => $inputEmail.style.borderColor = '', 1500); return; }
         const name = $inputName.value.trim();
         const comment = $inputComment.value.trim();
-        const groupId = $inputGroupSelect.value || '';
-
         if (editingId) {
             const mail = mails.find(m => m.id === editingId);
-            if (mail) { mail.email = email; mail.name = name; mail.comment = comment; mail.groupId = groupId; }
+            if (mail) { mail.email = email; mail.name = name; mail.comment = comment; }
         } else {
-            mails.unshift({ id: uid(), email, name, groupId, status: 'unchecked', comment, createdAt: Date.now() });
+            mails.unshift({ id: uid(), email, name, groupId: '', status: 'unchecked', comment, createdAt: Date.now() });
         }
-        saveMails();
-        closeAddModal();
-        render();
+        saveMails(); closeAddModal(); render();
     }
 
-    // Group modal
-    function openGroupModal() {
-        $inputGroupName.value = '';
-        $groupModalTitle.textContent = 'Группы';
-        renderExistingGroups();
-        $groupModalOverlay.classList.remove('hidden');
-        setTimeout(() => $inputGroupName.focus(), 350);
-    }
-
-    function closeGroupModal() { $groupModalOverlay.classList.add('hidden'); }
-
-    function saveGroup() {
-        const name = $inputGroupName.value.trim();
-        if (!name) return;
-        groups.push({ id: uid(), name });
-        saveGroups();
-        $inputGroupName.value = '';
-        renderExistingGroups();
-        renderGroupTabs();
-    }
-
-    function deleteGroup(groupId) {
-        groups = groups.filter(g => g.id !== groupId);
-        mails.forEach(m => { if (m.groupId === groupId) m.groupId = ''; });
-        saveGroups();
-        saveMails();
-        if (currentGroup === groupId) currentGroup = 'all';
-        renderExistingGroups();
-        render();
-    }
-
-    // Comment modal
     function openCommentModal(id) {
         const mail = mails.find(m => m.id === id);
         if (!mail) return;
@@ -321,9 +353,7 @@
         $commentOverlay.classList.remove('hidden');
         setTimeout(() => $commentTextarea.focus(), 350);
     }
-
     function closeCommentModal() { $commentOverlay.classList.add('hidden'); commentingId = null; }
-
     function saveComment() {
         if (!commentingId) return;
         const mail = mails.find(m => m.id === commentingId);
@@ -331,7 +361,6 @@
         closeCommentModal();
     }
 
-    // Delete modal
     function openDeleteModal(id) {
         const mail = mails.find(m => m.id === id);
         if (!mail) return;
@@ -339,21 +368,108 @@
         $deleteEmailText.textContent = mail.email;
         $deleteOverlay.classList.remove('hidden');
     }
-
     function closeDeleteModal() { $deleteOverlay.classList.add('hidden'); deletingId = null; }
-
     function confirmDelete() {
         if (!deletingId) return;
-        const card = document.querySelector(`.mail-item[data-id="${deletingId}"]`);
-        if (card) {
-            card.classList.add('removing');
-            setTimeout(() => { mails = mails.filter(m => m.id !== deletingId); saveMails(); render(); closeDeleteModal(); }, 250);
-        } else {
-            mails = mails.filter(m => m.id !== deletingId); saveMails(); render(); closeDeleteModal();
+        mails = mails.filter(m => m.id !== deletingId);
+        saveMails(); render(); closeDeleteModal();
+    }
+
+    // === Drag and Drop ===
+    function setupDragAndDrop() {
+        const items = document.querySelectorAll('.mail-item[draggable="true"]');
+        const containers = document.querySelectorAll('.group-section-items');
+        const sections = document.querySelectorAll('.group-section');
+
+        items.forEach(item => {
+            item.addEventListener('dragstart', (e) => {
+                item.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', item.dataset.id);
+            });
+            item.addEventListener('dragend', () => {
+                item.classList.remove('dragging');
+                sections.forEach(s => s.classList.remove('drop-target'));
+            });
+            
+            // Touch drag support for mobile
+            let touchTimer;
+            item.addEventListener('touchstart', (e) => {
+                if(e.target.closest('button')) return;
+                touchTimer = setTimeout(() => {
+                    item.classList.add('dragging');
+                    if (navigator.vibrate) navigator.vibrate(10);
+                }, 500); // long press
+            }, {passive:true});
+            item.addEventListener('touchmove', (e) => {
+                if(!item.classList.contains('dragging')) {
+                    clearTimeout(touchTimer);
+                    return;
+                }
+                e.preventDefault();
+                const touch = e.touches[0];
+                item.style.top = (touch.clientY - item.offsetHeight/2) + 'px';
+                item.style.left = '12px';
+                
+                // Find element under touch
+                const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+                const section = elem ? elem.closest('.group-section') : null;
+                sections.forEach(s => s.classList.remove('drop-target'));
+                if (section) section.classList.add('drop-target');
+            });
+            item.addEventListener('touchend', (e) => {
+                clearTimeout(touchTimer);
+                if(!item.classList.contains('dragging')) return;
+                item.classList.remove('dragging');
+                item.style.top = '';
+                item.style.left = '';
+                
+                const touch = e.changedTouches[0];
+                const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+                const section = elem ? elem.closest('.group-section') : null;
+                sections.forEach(s => s.classList.remove('drop-target'));
+                
+                if (section) {
+                    const mailId = item.dataset.id;
+                    const targetGroupId = section.dataset.groupId || '';
+                    moveMailToGroup(mailId, targetGroupId);
+                }
+            });
+        });
+
+        containers.forEach(container => {
+            container.addEventListener('dragover', e => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const section = container.closest('.group-section');
+                if (section) section.classList.add('drop-target');
+            });
+            container.addEventListener('dragleave', e => {
+                const section = container.closest('.group-section');
+                if (section) section.classList.remove('drop-target');
+            });
+            container.addEventListener('drop', e => {
+                e.preventDefault();
+                const section = container.closest('.group-section');
+                if (section) section.classList.remove('drop-target');
+                const mailId = e.dataTransfer.getData('text/plain');
+                const targetGroupId = container.dataset.groupId || '';
+                moveMailToGroup(mailId, targetGroupId);
+            });
+        });
+    }
+
+    function moveMailToGroup(mailId, groupId) {
+        const mail = mails.find(m => m.id === mailId);
+        if (mail && mail.groupId !== groupId) {
+            mail.groupId = groupId;
+            saveMails();
+            render();
+            if (navigator.vibrate) navigator.vibrate(10);
         }
     }
 
-    // ===== EVENTS =====
+    // === Events ===
     $('btn-add').addEventListener('click', openAddModal);
     $('btn-add-group').addEventListener('click', openGroupModal);
     $('btn-select-all').addEventListener('click', toggleSelectAll);
@@ -364,42 +480,40 @@
     $('group-modal-cancel').addEventListener('click', closeGroupModal);
     $('group-modal-save').addEventListener('click', saveGroup);
 
+    $('picker-cancel').addEventListener('click', () => $pickerOverlay.classList.add('hidden'));
+    $('picker-save').addEventListener('click', savePicker);
+
     $('comment-cancel').addEventListener('click', closeCommentModal);
     $('comment-save').addEventListener('click', saveComment);
 
     $('delete-cancel-btn').addEventListener('click', closeDeleteModal);
     $('delete-confirm').addEventListener('click', confirmDelete);
 
-    // Close overlays on bg click
-    [$modalOverlay, $groupModalOverlay, $commentOverlay, $deleteOverlay].forEach(ov => {
+    [$modalOverlay, $groupModalOverlay, $pickerOverlay, $commentOverlay, $deleteOverlay].forEach(ov => {
         ov.addEventListener('click', e => { if (e.target === ov) ov.classList.add('hidden'); });
     });
 
-    // Search
     $searchInput.addEventListener('input', e => { searchQuery = e.target.value; render(); });
 
-    // Group tabs
-    $groupTabs.addEventListener('click', e => {
-        // Delete group button
-        const delBtn = e.target.closest('[data-delete-group]');
-        if (delBtn) { deleteGroup(delBtn.dataset.deleteGroup); return; }
-
-        const tab = e.target.closest('.group-tab');
-        if (!tab) return;
-        currentGroup = tab.dataset.group;
-        render();
-    });
-
-    // Group modal — delete existing group
     $existingGroups.addEventListener('click', e => {
         const btn = e.target.closest('[data-delete-group]');
         if (btn) deleteGroup(btn.dataset.deleteGroup);
     });
 
-    // Mail list delegation
-    $container.addEventListener('click', e => {
-        const cb = e.target.closest('.mail-checkbox');
-        if (cb) { toggleStatus(cb.dataset.id); return; }
+    $pickerList.addEventListener('click', e => {
+        const item = e.target.closest('.picker-item');
+        if (item) togglePickerItem(item.dataset.id, item);
+    });
+
+    $sections.addEventListener('click', e => {
+        const toggle = e.target.closest('.toggle-switch');
+        if (toggle) { toggleStatus(toggle.dataset.id); return; }
+
+        const addBtn = e.target.closest('.group-add-btn');
+        if (addBtn) { openPickerModal(addBtn.dataset.addTo); return; }
+
+        const removeBtn = e.target.closest('.remove-from-group-btn');
+        if (removeBtn) { moveMailToGroup(removeBtn.dataset.remove, ''); return; }
 
         const copyBtn = e.target.closest('.copy-btn');
         if (copyBtn) { copyToClipboard(copyBtn.dataset.copy); return; }
@@ -417,51 +531,10 @@
         }
     });
 
-    // Enter in inputs
     $inputEmail.addEventListener('keydown', e => { if (e.key === 'Enter') $inputName.focus(); });
     $inputName.addEventListener('keydown', e => { if (e.key === 'Enter') saveModal(); });
     $inputGroupName.addEventListener('keydown', e => { if (e.key === 'Enter') saveGroup(); });
 
-    // Swipe to delete
-    let touchStartX = 0, touchStartY = 0, swiping = false, swipeCard = null;
-
-    $container.addEventListener('touchstart', e => {
-        const card = e.target.closest('.mail-item');
-        if (!card || e.target.closest('button')) return;
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
-        swipeCard = card;
-        swiping = false;
-    }, { passive: true });
-
-    $container.addEventListener('touchmove', e => {
-        if (!swipeCard) return;
-        const dx = e.touches[0].clientX - touchStartX;
-        const dy = e.touches[0].clientY - touchStartY;
-        if (!swiping && Math.abs(dx) > 15 && Math.abs(dx) > Math.abs(dy)) swiping = true;
-        if (swiping && dx < 0) {
-            swipeCard.style.transform = `translateX(${Math.max(dx, -120)}px)`;
-            swipeCard.style.transition = 'none';
-        }
-    }, { passive: true });
-
-    $container.addEventListener('touchend', () => {
-        if (!swipeCard) return;
-        if (swiping) {
-            const m = swipeCard.style.transform.match(/translateX\(([-\d.]+)px\)/);
-            const offset = m ? parseFloat(m[1]) : 0;
-            swipeCard.style.transition = 'transform 0.3s ease';
-            if (offset < -80) openDeleteModal(swipeCard.dataset.id);
-            swipeCard.style.transform = '';
-        }
-        swipeCard = null;
-        swiping = false;
-    });
-
-    // ===== INIT =====
     render();
-
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
-    }
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

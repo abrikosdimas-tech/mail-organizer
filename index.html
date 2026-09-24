@@ -17,7 +17,6 @@
 </head>
 <body>
     <div id="app">
-        <!-- Header -->
         <header id="main-header">
             <div class="header-top">
                 <h1 id="app-title">Почта</h1>
@@ -43,7 +42,6 @@
                     </button>
                 </div>
             </div>
-            <!-- Search -->
             <div class="search-container">
                 <div class="search-bar">
                     <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -53,28 +51,21 @@
                     <input type="text" id="search-input" placeholder="Поиск..." autocomplete="off">
                 </div>
             </div>
-            <!-- Group tabs -->
-            <div class="group-tabs" id="group-tabs">
-                <button class="group-tab active" data-group="all">Все</button>
-                <!-- Dynamic group tabs rendered by JS -->
-            </div>
         </header>
 
-        <!-- Mail List -->
         <main id="mail-list">
-            <div id="mail-items-container"></div>
+            <div id="sections-container"></div>
             <div id="empty-state" class="empty-state hidden">
                 <p class="empty-text">Нет почт</p>
                 <p class="empty-sub">Нажмите + чтобы добавить</p>
             </div>
         </main>
 
-        <!-- Toast for copy -->
         <div id="toast" class="toast hidden">Скопировано</div>
 
-        <!-- Add Mail Modal -->
+        <!-- Add/Edit Mail Modal -->
         <div id="modal-overlay" class="modal-overlay hidden">
-            <div class="modal" id="add-modal">
+            <div class="modal">
                 <div class="modal-header">
                     <button id="modal-cancel" class="modal-btn cancel">Отмена</button>
                     <h2 class="modal-title" id="modal-title-text">Новая почта</h2>
@@ -90,12 +81,6 @@
                         <input type="text" id="input-name" placeholder="Личная, рабочая..." autocomplete="off">
                     </div>
                     <div class="input-group">
-                        <label for="input-group-select">Группа</label>
-                        <select id="input-group-select">
-                            <option value="">Без группы</option>
-                        </select>
-                    </div>
-                    <div class="input-group">
                         <label for="input-comment">Комментарий</label>
                         <textarea id="input-comment" placeholder="Заметка..." rows="3"></textarea>
                     </div>
@@ -103,28 +88,44 @@
             </div>
         </div>
 
-        <!-- Add Group Modal -->
+        <!-- Group Management Modal -->
         <div id="group-modal-overlay" class="modal-overlay hidden">
-            <div class="modal" id="group-modal">
+            <div class="modal">
                 <div class="modal-header">
                     <button id="group-modal-cancel" class="modal-btn cancel">Отмена</button>
-                    <h2 class="modal-title" id="group-modal-title">Новая группа</h2>
-                    <button id="group-modal-save" class="modal-btn save">Готово</button>
+                    <h2 class="modal-title">Группы</h2>
+                    <button id="group-modal-save" class="modal-btn save">Добавить</button>
                 </div>
                 <div class="modal-body">
                     <div class="input-group">
-                        <label for="input-group-name">Название группы</label>
-                        <input type="text" id="input-group-name" placeholder="Рабочие, личные..." autocomplete="off">
+                        <label for="input-group-name">Новая группа</label>
+                        <input type="text" id="input-group-name" placeholder="Название..." autocomplete="off">
                     </div>
-                    <!-- Existing groups list -->
-                    <div class="existing-groups" id="existing-groups"></div>
+                    <div id="existing-groups"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Picker Modal: add mails to group -->
+        <div id="picker-overlay" class="modal-overlay hidden">
+            <div class="modal">
+                <div class="modal-header">
+                    <button id="picker-cancel" class="modal-btn cancel">Отмена</button>
+                    <h2 class="modal-title" id="picker-title">Добавить в группу</h2>
+                    <button id="picker-save" class="modal-btn save">Готово</button>
+                </div>
+                <div class="modal-body">
+                    <div id="picker-list"></div>
+                    <div id="picker-empty" class="hidden" style="text-align:center;color:var(--text-faint);padding:20px;font-size:14px;">
+                        Нет доступных почт
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Comment Modal -->
         <div id="comment-overlay" class="modal-overlay hidden">
-            <div class="modal" id="comment-modal">
+            <div class="modal">
                 <div class="modal-header">
                     <button id="comment-cancel" class="modal-btn cancel">Закрыть</button>
                     <h2 class="modal-title">Комментарий</h2>
@@ -141,7 +142,7 @@
 
         <!-- Delete confirm -->
         <div id="delete-overlay" class="modal-overlay hidden">
-            <div class="action-sheet" id="delete-sheet">
+            <div class="action-sheet">
                 <div class="action-sheet-body">
                     <p class="action-sheet-title">Удалить?</p>
                     <p class="action-sheet-subtitle" id="delete-email-text"></p>
