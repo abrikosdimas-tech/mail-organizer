@@ -1,103 +1,143 @@
 /* ============================================
-   Mail Organizer — App Logic
+   Mail Organizer — App Logic v2
+   Groups, Select All, Copy, Minimal
    ============================================ */
 
 (function () {
     'use strict';
 
-    // ===== STATE =====
     const STORAGE_KEY = 'mail_organizer_data';
-    let mails = loadMails();
-    let currentFilter = 'all';
+    const GROUPS_KEY = 'mail_organizer_groups';
+
+    let mails = loadData(STORAGE_KEY, []);
+    let groups = loadData(GROUPS_KEY, []);
+    let currentGroup = 'all';
     let searchQuery = '';
-    let editingId = null; // for edit mode
+    let editingId = null;
     let deletingId = null;
     let commentingId = null;
-    let filtersVisible = false;
 
-    // ===== DOM REFS =====
-    const $container = document.getElementById('mail-items-container');
-    const $emptyState = document.getElementById('empty-state');
-    const $searchInput = document.getElementById('search-input');
-    const $filterTabs = document.getElementById('filter-tabs');
-    const $mailList = document.getElementById('mail-list');
-
-    // Stats
-    const $statTotal = document.getElementById('stat-total');
-    const $statDone = document.getElementById('stat-done');
-    const $statPending = document.getElementById('stat-pending');
+    // ===== DOM =====
+    const $ = (s) => document.getElementById(s);
+    const $container = $('mail-items-container');
+    const $emptyState = $('empty-state');
+    const $searchInput = $('search-input');
+    const $groupTabs = $('group-tabs');
+    const $toast = $('toast');
 
     // Add modal
-    const $modalOverlay = document.getElementById('modal-overlay');
-    const $modalTitleText = document.getElementById('modal-title-text');
-    const $inputEmail = document.getElementById('input-email');
-    const $inputName = document.getElementById('input-name');
-    const $inputComment = document.getElementById('input-comment');
-    const $categoryPicker = document.getElementById('category-picker');
-    const $btnAdd = document.getElementById('btn-add');
-    const $btnFilter = document.getElementById('btn-filter');
-    const $modalCancel = document.getElementById('modal-cancel');
-    const $modalSave = document.getElementById('modal-save');
+    const $modalOverlay = $('modal-overlay');
+    const $modalTitleText = $('modal-title-text');
+    const $inputEmail = $('input-email');
+    const $inputName = $('input-name');
+    const $inputComment = $('input-comment');
+    const $inputGroupSelect = $('input-group-select');
+
+    // Group modal
+    const $groupModalOverlay = $('group-modal-overlay');
+    const $groupModalTitle = $('group-modal-title');
+    const $inputGroupName = $('input-group-name');
+    const $existingGroups = $('existing-groups');
 
     // Comment modal
-    const $commentOverlay = document.getElementById('comment-overlay');
-    const $commentTextarea = document.getElementById('comment-textarea');
-    const $commentEmailPreview = document.getElementById('comment-email-preview');
-    const $commentCancel = document.getElementById('comment-cancel');
-    const $commentSave = document.getElementById('comment-save');
+    const $commentOverlay = $('comment-overlay');
+    const $commentTextarea = $('comment-textarea');
+    const $commentEmailPreview = $('comment-email-preview');
 
-    // Delete
-    const $deleteOverlay = document.getElementById('delete-overlay');
-    const $deleteEmailText = document.getElementById('delete-email-text');
-    const $deleteConfirm = document.getElementById('delete-confirm');
-    const $deleteCancelBtn = document.getElementById('delete-cancel-btn');
+    // Delete modal
+    const $deleteOverlay = $('delete-overlay');
+    const $deleteEmailText = $('delete-email-text');
 
     // ===== HELPERS =====
-    function generateId() {
+    function uid() {
         return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
     }
 
-    function loadMails() {
+    function loadData(key, fallback) {
         try {
-            const data = localStorage.getItem(STORAGE_KEY);
-            return data ? JSON.parse(data) : getDefaultMails();
-        } catch {
-            return getDefaultMails();
+            const d = localStorage.getItem(key);
+            return d ? JSON.parse(d) : fallback;
+        } catch { return fallback; }
+    }
+
+    function saveMails() { localStorage.setItem(STORAGE_KEY, JSON.stringify(mails)); }
+    function saveGroups() { localStorage.setItem(GROUPS_KEY, JSON.stringify(groups)); }
+
+    function esc(text) {
+        const d = document.createElement('div');
+        d.textContent = text;
+        return d.innerHTML;
+    }
+
+    function showToast(msg) {
+        $toast.textContent = msg;
+        $toast.classList.remove('hidden');
+        $toast.classList.add('visible');
+        setTimeout(() => {
+            $toast.classList.remove('visible');
+            setTimeout(() => $toast.classList.add('hidden'), 300);
+        }, 1500);
+    }
+
+    function copyToClipboard(text) {
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(() => showToast('Скопировано: ' + text));
+        } else {
+            // Fallback
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            showToast('Скопировано: ' + text);
         }
+        if (navigator.vibrate) navigator.vibrate(10);
     }
 
-    function saveMails() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(mails));
+    // ===== GROUPS =====
+    function renderGroupTabs() {
+        let html = '<button class="group-tab ' + (currentGroup === 'all' ? 'active' : '') + '" data-group="all">Все</button>';
+        groups.forEach(g => {
+            html += `<button class="group-tab ${currentGroup === g.id ? 'active' : ''}" data-group="${g.id}">
+                ${esc(g.name)}<span class="tab-delete" data-delete-group="${g.id}"> ✕</span>
+            </button>`;
+        });
+        $groupTabs.innerHTML = html;
     }
 
-    function getDefaultMails() {
-        return [];
+    function renderGroupSelect(selectedId) {
+        let html = '<option value="">Без группы</option>';
+        groups.forEach(g => {
+            html += `<option value="${g.id}" ${selectedId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`;
+        });
+        $inputGroupSelect.innerHTML = html;
     }
 
-    function getCategoryLabel(cat) {
-        const map = { personal: 'Личная', work: 'Рабочая', social: 'Соцсети', other: 'Другое' };
-        return map[cat] || cat;
+    function renderExistingGroups() {
+        if (groups.length === 0) {
+            $existingGroups.innerHTML = '';
+            return;
+        }
+        let html = '<p class="existing-groups-title">Существующие группы</p>';
+        groups.forEach(g => {
+            const count = mails.filter(m => m.groupId === g.id).length;
+            html += `<div class="existing-group-item">
+                <span class="existing-group-name">${esc(g.name)} <span style="color:var(--text-faint)">(${count})</span></span>
+                <button class="existing-group-delete" data-delete-group="${g.id}">Удалить</button>
+            </div>`;
+        });
+        $existingGroups.innerHTML = html;
     }
 
-    function getSelectedCategory() {
-        const active = $categoryPicker.querySelector('.category-chip.active');
-        return active ? active.dataset.category : 'personal';
-    }
-
-    // ===== RENDERING =====
-    function getFilteredMails() {
+    // ===== RENDER =====
+    function getFiltered() {
         let result = mails;
-
-        // Filter by tab
-        if (currentFilter === 'checked') {
-            result = result.filter(m => m.status === 'checked');
-        } else if (currentFilter === 'unchecked') {
-            result = result.filter(m => m.status === 'unchecked');
-        } else if (currentFilter === 'commented') {
-            result = result.filter(m => m.comment && m.comment.trim().length > 0);
+        if (currentGroup !== 'all') {
+            result = result.filter(m => m.groupId === currentGroup);
         }
-
-        // Filter by search
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase().trim();
             result = result.filter(m =>
@@ -106,13 +146,12 @@
                 (m.comment && m.comment.toLowerCase().includes(q))
             );
         }
-
         return result;
     }
 
     function render() {
-        const filtered = getFilteredMails();
-        updateStats();
+        const filtered = getFiltered();
+        renderGroupTabs();
 
         if (filtered.length === 0) {
             $container.innerHTML = '';
@@ -121,102 +160,75 @@
         }
 
         $emptyState.classList.add('hidden');
-
-        $container.innerHTML = filtered.map((mail, index) => `
-            <div class="mail-item ${mail.status === 'checked' ? 'done' : ''}"
-                 data-id="${mail.id}"
-                 data-category="${mail.category}"
-                 style="animation-delay: ${index * 0.04}s">
-                <div class="checkbox-container">
-                    <button class="mail-checkbox ${mail.status}" data-id="${mail.id}" aria-label="Переключить статус">
-                        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                        <svg class="cross-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"/>
-                            <line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
-                    </button>
-                </div>
+        $container.innerHTML = filtered.map((mail, i) => {
+            const group = groups.find(g => g.id === mail.groupId);
+            return `
+            <div class="mail-item" data-id="${mail.id}" style="animation-delay:${i * 0.03}s">
+                <button class="mail-checkbox ${mail.status}" data-id="${mail.id}">
+                    <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    <svg class="cross-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
                 <div class="mail-info">
-                    <div class="mail-email">${escapeHtml(mail.email)}</div>
-                    ${mail.name ? `<div class="mail-name">${escapeHtml(mail.name)}</div>` : ''}
-                    <span class="mail-category-badge" data-cat="${mail.category}">${getCategoryLabel(mail.category)}</span>
-                    ${mail.comment ? `<div class="mail-comment-preview">💬 ${escapeHtml(mail.comment)}</div>` : ''}
+                    <div class="mail-email-row">
+                        <span class="mail-email">${esc(mail.email)}</span>
+                        <button class="copy-btn" data-copy="${esc(mail.email)}" title="Копировать">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                    ${mail.name ? `<div class="mail-name">${esc(mail.name)}</div>` : ''}
+                    ${group ? `<span class="mail-group-tag">${esc(group.name)}</span>` : ''}
+                    ${mail.comment ? `<div class="mail-comment-preview">💬 ${esc(mail.comment)}</div>` : ''}
                 </div>
                 <div class="mail-actions">
-                    <button class="action-icon-btn comment-btn ${mail.comment ? 'has-comment' : ''}" data-id="${mail.id}" aria-label="Комментарий">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <button class="action-icon-btn comment-btn ${mail.comment ? 'has-comment' : ''}" data-id="${mail.id}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                         </svg>
                     </button>
-                    <button class="action-icon-btn delete-btn" data-id="${mail.id}" aria-label="Удалить">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <button class="action-icon-btn delete-btn" data-id="${mail.id}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="3 6 5 6 21 6"/>
                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                         </svg>
                     </button>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
     }
 
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
+    // ===== SELECT ALL =====
+    function toggleSelectAll() {
+        const filtered = getFiltered();
+        if (filtered.length === 0) return;
 
-    function updateStats() {
-        const total = mails.length;
-        const done = mails.filter(m => m.status === 'checked').length;
-        const pending = total - done;
-
-        animateNumber($statTotal, total);
-        animateNumber($statDone, done);
-        animateNumber($statPending, pending);
-    }
-
-    function animateNumber(el, target) {
-        const current = parseInt(el.textContent) || 0;
-        if (current === target) return;
-        el.textContent = target;
-        el.style.transform = 'scale(1.3)';
-        setTimeout(() => el.style.transition = 'transform 0.3s ease', 0);
-        setTimeout(() => el.style.transform = 'scale(1)', 20);
+        const allChecked = filtered.every(m => m.status === 'checked');
+        const newStatus = allChecked ? 'unchecked' : 'checked';
+        filtered.forEach(m => m.status = newStatus);
+        saveMails();
+        render();
+        if (navigator.vibrate) navigator.vibrate(10);
     }
 
     // ===== TOGGLE CHECKBOX =====
     function toggleStatus(id) {
         const mail = mails.find(m => m.id === id);
         if (!mail) return;
-
-        const prevStatus = mail.status;
-        mail.status = prevStatus === 'checked' ? 'unchecked' : 'checked';
+        mail.status = mail.status === 'checked' ? 'unchecked' : 'checked';
         saveMails();
 
-        // Animate checkbox
-        const checkbox = document.querySelector(`.mail-checkbox[data-id="${id}"]`);
-        if (checkbox) {
-            checkbox.classList.remove('checked', 'unchecked', 'pulse-green', 'pulse-red');
-            // Force reflow
-            void checkbox.offsetWidth;
-            checkbox.classList.add(mail.status);
-            checkbox.classList.add(mail.status === 'checked' ? 'pulse-green' : 'pulse-red');
-
-            // Add haptic feedback if available
-            if (navigator.vibrate) {
-                navigator.vibrate(10);
-            }
+        const cb = document.querySelector(`.mail-checkbox[data-id="${id}"]`);
+        if (cb) {
+            cb.classList.remove('checked', 'unchecked');
+            cb.classList.add(mail.status);
         }
-
-        // Update done class on card
-        const card = document.querySelector(`.mail-item[data-id="${id}"]`);
-        if (card) {
-            card.classList.toggle('done', mail.status === 'checked');
-        }
-
-        updateStats();
+        if (navigator.vibrate) navigator.vibrate(10);
     }
 
     // ===== MODALS =====
@@ -226,233 +238,178 @@
         $inputEmail.value = '';
         $inputName.value = '';
         $inputComment.value = '';
-        resetCategoryPicker('personal');
+        renderGroupSelect('');
         $modalOverlay.classList.remove('hidden');
-        setTimeout(() => $inputEmail.focus(), 400);
+        setTimeout(() => $inputEmail.focus(), 350);
     }
 
     function openEditModal(id) {
         const mail = mails.find(m => m.id === id);
         if (!mail) return;
-
         editingId = id;
         $modalTitleText.textContent = 'Редактировать';
         $inputEmail.value = mail.email;
         $inputName.value = mail.name;
         $inputComment.value = mail.comment;
-        resetCategoryPicker(mail.category);
+        renderGroupSelect(mail.groupId || '');
         $modalOverlay.classList.remove('hidden');
-        setTimeout(() => $inputEmail.focus(), 400);
+        setTimeout(() => $inputEmail.focus(), 350);
     }
 
-    function closeAddModal() {
-        $modalOverlay.classList.add('hidden');
-        editingId = null;
-    }
+    function closeAddModal() { $modalOverlay.classList.add('hidden'); editingId = null; }
 
     function saveModal() {
         const email = $inputEmail.value.trim();
         if (!email) {
-            $inputEmail.style.borderColor = 'var(--accent-red)';
-            $inputEmail.style.boxShadow = 'var(--shadow-glow-red)';
-            setTimeout(() => {
-                $inputEmail.style.borderColor = '';
-                $inputEmail.style.boxShadow = '';
-            }, 1500);
+            $inputEmail.style.borderColor = 'var(--red)';
+            setTimeout(() => $inputEmail.style.borderColor = '', 1500);
             return;
         }
-
         const name = $inputName.value.trim();
         const comment = $inputComment.value.trim();
-        const category = getSelectedCategory();
+        const groupId = $inputGroupSelect.value || '';
 
         if (editingId) {
-            // Update existing
             const mail = mails.find(m => m.id === editingId);
-            if (mail) {
-                mail.email = email;
-                mail.name = name;
-                mail.comment = comment;
-                mail.category = category;
-            }
+            if (mail) { mail.email = email; mail.name = name; mail.comment = comment; mail.groupId = groupId; }
         } else {
-            // Add new
-            mails.unshift({
-                id: generateId(),
-                email,
-                name,
-                category,
-                status: 'unchecked',
-                comment,
-                createdAt: Date.now()
-            });
+            mails.unshift({ id: uid(), email, name, groupId, status: 'unchecked', comment, createdAt: Date.now() });
         }
-
         saveMails();
         closeAddModal();
         render();
     }
 
-    function resetCategoryPicker(selected) {
-        $categoryPicker.querySelectorAll('.category-chip').forEach(chip => {
-            chip.classList.toggle('active', chip.dataset.category === selected);
-        });
+    // Group modal
+    function openGroupModal() {
+        $inputGroupName.value = '';
+        $groupModalTitle.textContent = 'Группы';
+        renderExistingGroups();
+        $groupModalOverlay.classList.remove('hidden');
+        setTimeout(() => $inputGroupName.focus(), 350);
     }
 
+    function closeGroupModal() { $groupModalOverlay.classList.add('hidden'); }
+
+    function saveGroup() {
+        const name = $inputGroupName.value.trim();
+        if (!name) return;
+        groups.push({ id: uid(), name });
+        saveGroups();
+        $inputGroupName.value = '';
+        renderExistingGroups();
+        renderGroupTabs();
+    }
+
+    function deleteGroup(groupId) {
+        groups = groups.filter(g => g.id !== groupId);
+        mails.forEach(m => { if (m.groupId === groupId) m.groupId = ''; });
+        saveGroups();
+        saveMails();
+        if (currentGroup === groupId) currentGroup = 'all';
+        renderExistingGroups();
+        render();
+    }
+
+    // Comment modal
     function openCommentModal(id) {
         const mail = mails.find(m => m.id === id);
         if (!mail) return;
-
         commentingId = id;
         $commentEmailPreview.textContent = mail.email;
         $commentTextarea.value = mail.comment || '';
         $commentOverlay.classList.remove('hidden');
-        setTimeout(() => $commentTextarea.focus(), 400);
+        setTimeout(() => $commentTextarea.focus(), 350);
     }
 
-    function closeCommentModal() {
-        $commentOverlay.classList.add('hidden');
-        commentingId = null;
-    }
+    function closeCommentModal() { $commentOverlay.classList.add('hidden'); commentingId = null; }
 
     function saveComment() {
         if (!commentingId) return;
         const mail = mails.find(m => m.id === commentingId);
-        if (mail) {
-            mail.comment = $commentTextarea.value.trim();
-            saveMails();
-            render();
-        }
+        if (mail) { mail.comment = $commentTextarea.value.trim(); saveMails(); render(); }
         closeCommentModal();
     }
 
+    // Delete modal
     function openDeleteModal(id) {
         const mail = mails.find(m => m.id === id);
         if (!mail) return;
-
         deletingId = id;
         $deleteEmailText.textContent = mail.email;
         $deleteOverlay.classList.remove('hidden');
     }
 
-    function closeDeleteModal() {
-        $deleteOverlay.classList.add('hidden');
-        deletingId = null;
-    }
+    function closeDeleteModal() { $deleteOverlay.classList.add('hidden'); deletingId = null; }
 
     function confirmDelete() {
         if (!deletingId) return;
-
         const card = document.querySelector(`.mail-item[data-id="${deletingId}"]`);
         if (card) {
             card.classList.add('removing');
-            setTimeout(() => {
-                mails = mails.filter(m => m.id !== deletingId);
-                saveMails();
-                render();
-                closeDeleteModal();
-            }, 350);
+            setTimeout(() => { mails = mails.filter(m => m.id !== deletingId); saveMails(); render(); closeDeleteModal(); }, 250);
         } else {
-            mails = mails.filter(m => m.id !== deletingId);
-            saveMails();
-            render();
-            closeDeleteModal();
+            mails = mails.filter(m => m.id !== deletingId); saveMails(); render(); closeDeleteModal();
         }
     }
 
-    // ===== FILTER =====
-    function toggleFilters() {
-        filtersVisible = !filtersVisible;
-        $filterTabs.classList.toggle('visible', filtersVisible);
-        $mailList.classList.toggle('filters-open', filtersVisible);
-        $btnFilter.style.color = filtersVisible ? 'var(--accent-blue)' : '';
-        $btnFilter.style.background = filtersVisible ? 'rgba(94, 114, 228, 0.15)' : '';
-    }
+    // ===== EVENTS =====
+    $('btn-add').addEventListener('click', openAddModal);
+    $('btn-add-group').addEventListener('click', openGroupModal);
+    $('btn-select-all').addEventListener('click', toggleSelectAll);
 
-    function setFilter(filter) {
-        currentFilter = filter;
-        $filterTabs.querySelectorAll('.filter-tab').forEach(tab => {
-            tab.classList.toggle('active', tab.dataset.filter === filter);
-        });
-        render();
-    }
+    $('modal-cancel').addEventListener('click', closeAddModal);
+    $('modal-save').addEventListener('click', saveModal);
 
-    // ===== EVENT LISTENERS =====
+    $('group-modal-cancel').addEventListener('click', closeGroupModal);
+    $('group-modal-save').addEventListener('click', saveGroup);
 
-    // Add button
-    $btnAdd.addEventListener('click', openAddModal);
+    $('comment-cancel').addEventListener('click', closeCommentModal);
+    $('comment-save').addEventListener('click', saveComment);
 
-    // Filter button
-    $btnFilter.addEventListener('click', toggleFilters);
+    $('delete-cancel-btn').addEventListener('click', closeDeleteModal);
+    $('delete-confirm').addEventListener('click', confirmDelete);
 
-    // Modal cancel / save
-    $modalCancel.addEventListener('click', closeAddModal);
-    $modalSave.addEventListener('click', saveModal);
-
-    // Comment modal
-    $commentCancel.addEventListener('click', closeCommentModal);
-    $commentSave.addEventListener('click', saveComment);
-
-    // Delete modal
-    $deleteCancelBtn.addEventListener('click', closeDeleteModal);
-    $deleteConfirm.addEventListener('click', confirmDelete);
-
-    // Close modals on overlay click
-    $modalOverlay.addEventListener('click', (e) => {
-        if (e.target === $modalOverlay) closeAddModal();
-    });
-    $commentOverlay.addEventListener('click', (e) => {
-        if (e.target === $commentOverlay) closeCommentModal();
-    });
-    $deleteOverlay.addEventListener('click', (e) => {
-        if (e.target === $deleteOverlay) closeDeleteModal();
-    });
-
-    // Category picker
-    $categoryPicker.addEventListener('click', (e) => {
-        const chip = e.target.closest('.category-chip');
-        if (!chip) return;
-        $categoryPicker.querySelectorAll('.category-chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-    });
-
-    // Filter tabs
-    $filterTabs.addEventListener('click', (e) => {
-        const tab = e.target.closest('.filter-tab');
-        if (!tab) return;
-        setFilter(tab.dataset.filter);
+    // Close overlays on bg click
+    [$modalOverlay, $groupModalOverlay, $commentOverlay, $deleteOverlay].forEach(ov => {
+        ov.addEventListener('click', e => { if (e.target === ov) ov.classList.add('hidden'); });
     });
 
     // Search
-    $searchInput.addEventListener('input', (e) => {
-        searchQuery = e.target.value;
+    $searchInput.addEventListener('input', e => { searchQuery = e.target.value; render(); });
+
+    // Group tabs
+    $groupTabs.addEventListener('click', e => {
+        // Delete group button
+        const delBtn = e.target.closest('[data-delete-group]');
+        if (delBtn) { deleteGroup(delBtn.dataset.deleteGroup); return; }
+
+        const tab = e.target.closest('.group-tab');
+        if (!tab) return;
+        currentGroup = tab.dataset.group;
         render();
     });
 
-    // Delegate clicks on mail list
-    $container.addEventListener('click', (e) => {
-        // Checkbox
-        const checkbox = e.target.closest('.mail-checkbox');
-        if (checkbox) {
-            toggleStatus(checkbox.dataset.id);
-            return;
-        }
+    // Group modal — delete existing group
+    $existingGroups.addEventListener('click', e => {
+        const btn = e.target.closest('[data-delete-group]');
+        if (btn) deleteGroup(btn.dataset.deleteGroup);
+    });
 
-        // Comment button
+    // Mail list delegation
+    $container.addEventListener('click', e => {
+        const cb = e.target.closest('.mail-checkbox');
+        if (cb) { toggleStatus(cb.dataset.id); return; }
+
+        const copyBtn = e.target.closest('.copy-btn');
+        if (copyBtn) { copyToClipboard(copyBtn.dataset.copy); return; }
+
         const commentBtn = e.target.closest('.comment-btn');
-        if (commentBtn) {
-            openCommentModal(commentBtn.dataset.id);
-            return;
-        }
+        if (commentBtn) { openCommentModal(commentBtn.dataset.id); return; }
 
-        // Delete button
         const deleteBtn = e.target.closest('.delete-btn');
-        if (deleteBtn) {
-            openDeleteModal(deleteBtn.dataset.id);
-            return;
-        }
+        if (deleteBtn) { openDeleteModal(deleteBtn.dataset.id); return; }
 
-        // Click on mail-info → edit
         const mailInfo = e.target.closest('.mail-info');
         if (mailInfo) {
             const card = mailInfo.closest('.mail-item');
@@ -460,44 +417,30 @@
         }
     });
 
-    // Keyboard: Enter to save in modals
-    $inputEmail.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') $inputName.focus();
-    });
-    $inputName.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') saveModal();
-    });
+    // Enter in inputs
+    $inputEmail.addEventListener('keydown', e => { if (e.key === 'Enter') $inputName.focus(); });
+    $inputName.addEventListener('keydown', e => { if (e.key === 'Enter') saveModal(); });
+    $inputGroupName.addEventListener('keydown', e => { if (e.key === 'Enter') saveGroup(); });
 
-    // ===== SWIPE TO DELETE (touch) =====
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let swiping = false;
-    let swipeCard = null;
+    // Swipe to delete
+    let touchStartX = 0, touchStartY = 0, swiping = false, swipeCard = null;
 
-    $container.addEventListener('touchstart', (e) => {
+    $container.addEventListener('touchstart', e => {
         const card = e.target.closest('.mail-item');
-        if (!card) return;
-        // Don't initiate swipe on buttons
-        if (e.target.closest('button')) return;
+        if (!card || e.target.closest('button')) return;
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
         swipeCard = card;
         swiping = false;
     }, { passive: true });
 
-    $container.addEventListener('touchmove', (e) => {
+    $container.addEventListener('touchmove', e => {
         if (!swipeCard) return;
         const dx = e.touches[0].clientX - touchStartX;
         const dy = e.touches[0].clientY - touchStartY;
-
-        // Determine direction
-        if (!swiping && Math.abs(dx) > 15 && Math.abs(dx) > Math.abs(dy)) {
-            swiping = true;
-        }
-
+        if (!swiping && Math.abs(dx) > 15 && Math.abs(dx) > Math.abs(dy)) swiping = true;
         if (swiping && dx < 0) {
-            const offset = Math.max(dx, -120);
-            swipeCard.style.transform = `translateX(${offset}px)`;
+            swipeCard.style.transform = `translateX(${Math.max(dx, -120)}px)`;
             swipeCard.style.transition = 'none';
         }
     }, { passive: true });
@@ -505,16 +448,10 @@
     $container.addEventListener('touchend', () => {
         if (!swipeCard) return;
         if (swiping) {
-            const currentTransform = swipeCard.style.transform;
-            const match = currentTransform.match(/translateX\(([-\d.]+)px\)/);
-            const offset = match ? parseFloat(match[1]) : 0;
-
+            const m = swipeCard.style.transform.match(/translateX\(([-\d.]+)px\)/);
+            const offset = m ? parseFloat(m[1]) : 0;
             swipeCard.style.transition = 'transform 0.3s ease';
-            if (offset < -80) {
-                // Delete
-                const id = swipeCard.dataset.id;
-                openDeleteModal(id);
-            }
+            if (offset < -80) openDeleteModal(swipeCard.dataset.id);
             swipeCard.style.transform = '';
         }
         swipeCard = null;
@@ -524,7 +461,6 @@
     // ===== INIT =====
     render();
 
-    // Register service worker for PWA
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').catch(() => {});
     }
