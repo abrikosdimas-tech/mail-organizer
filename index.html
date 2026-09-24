@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Почтовый Органайзер">
+    <meta name="theme-color" content="#0a0a1a">
+    <meta name="description" content="Органайзер почт с отметками и комментариями для iPhone">
+    <title>Почтовый Органайзер</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header id="main-header">
+            <div class="header-blur"></div>
+            <div class="header-content">
+                <h1 id="app-title">Почта</h1>
+                <div class="header-actions">
+                    <button id="btn-filter" class="header-btn" aria-label="Фильтр">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                        </svg>
+                    </button>
+                    <button id="btn-add" class="header-btn" aria-label="Добавить почту">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <!-- Search -->
+            <div class="search-container">
+                <div class="search-bar" id="search-bar">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input type="text" id="search-input" placeholder="Поиск почты..." autocomplete="off">
+                </div>
+            </div>
+            <!-- Filter tabs -->
+            <div class="filter-tabs" id="filter-tabs">
+                <button class="filter-tab active" data-filter="all">Все</button>
+                <button class="filter-tab" data-filter="checked">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Готово
+                </button>
+                <button class="filter-tab" data-filter="unchecked">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    В работе
+                </button>
+                <button class="filter-tab" data-filter="commented">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    С заметками
+                </button>
+            </div>
+        </header>
+
+        <!-- Mail List -->
+        <main id="mail-list">
+            <div id="mail-items-container">
+                <!-- Items rendered by JS -->
+            </div>
+            <div id="empty-state" class="empty-state hidden">
+                <div class="empty-icon">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                        <polyline points="22,6 12,13 2,6"/>
+                    </svg>
+                </div>
+                <p class="empty-title">Список пуст</p>
+                <p class="empty-subtitle">Нажмите «+» чтобы добавить почту</p>
+            </div>
+        </main>
+
+        <!-- Stats bar -->
+        <div id="stats-bar">
+            <div class="stat">
+                <span class="stat-value" id="stat-total">0</span>
+                <span class="stat-label">Всего</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat">
+                <span class="stat-value stat-done" id="stat-done">0</span>
+                <span class="stat-label">Готово</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat">
+                <span class="stat-value stat-pending" id="stat-pending">0</span>
+                <span class="stat-label">В работе</span>
+            </div>
+        </div>
+
+        <!-- Add Mail Modal -->
+        <div id="modal-overlay" class="modal-overlay hidden">
+            <div class="modal" id="add-modal">
+                <div class="modal-header">
+                    <button id="modal-cancel" class="modal-btn cancel">Отмена</button>
+                    <h2 class="modal-title" id="modal-title-text">Новая почта</h2>
+                    <button id="modal-save" class="modal-btn save">Сохранить</button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group">
+                        <label for="input-email">Email адрес</label>
+                        <input type="email" id="input-email" placeholder="example@mail.com" autocomplete="off">
+                    </div>
+                    <div class="input-group">
+                        <label for="input-name">Имя / Описание</label>
+                        <input type="text" id="input-name" placeholder="Личная почта, рабочая..." autocomplete="off">
+                    </div>
+                    <div class="input-group">
+                        <label for="input-category">Категория</label>
+                        <div class="category-picker" id="category-picker">
+                            <button class="category-chip active" data-category="personal">
+                                <span class="chip-dot" style="background: #5e72e4"></span>Личная
+                            </button>
+                            <button class="category-chip" data-category="work">
+                                <span class="chip-dot" style="background: #2dce89"></span>Рабочая
+                            </button>
+                            <button class="category-chip" data-category="social">
+                                <span class="chip-dot" style="background: #fb6340"></span>Соцсети
+                            </button>
+                            <button class="category-chip" data-category="other">
+                                <span class="chip-dot" style="background: #8b5cf6"></span>Другое
+                            </button>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="input-comment">Комментарий</label>
+                        <textarea id="input-comment" placeholder="Добавьте заметку..." rows="3"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comment Modal -->
+        <div id="comment-overlay" class="modal-overlay hidden">
+            <div class="modal comment-modal" id="comment-modal">
+                <div class="modal-header">
+                    <button id="comment-cancel" class="modal-btn cancel">Закрыть</button>
+                    <h2 class="modal-title">Комментарий</h2>
+                    <button id="comment-save" class="modal-btn save">Готово</button>
+                </div>
+                <div class="modal-body">
+                    <div class="comment-email-preview" id="comment-email-preview"></div>
+                    <div class="input-group">
+                        <textarea id="comment-textarea" placeholder="Введите комментарий..." rows="5"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete confirm -->
+        <div id="delete-overlay" class="modal-overlay hidden">
+            <div class="action-sheet" id="delete-sheet">
+                <div class="action-sheet-body">
+                    <p class="action-sheet-title">Удалить эту почту?</p>
+                    <p class="action-sheet-subtitle" id="delete-email-text"></p>
+                    <button id="delete-confirm" class="action-btn danger">Удалить</button>
+                </div>
+                <button id="delete-cancel-btn" class="action-btn cancel-action">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
