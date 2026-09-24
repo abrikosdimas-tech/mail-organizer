@@ -89,6 +89,7 @@ body {
     padding: 10px 14px; display: flex; gap: 10px; align-items: flex-start;
     border-bottom: 1px solid var(--border); animation: fadeIn 0.2s ease both;
     position: relative; transition: background 0.15s, transform 0.3s;
+    -webkit-user-select: none; user-select: none;
 }
 .mail-item:last-child { border-bottom: none; }
 .mail-item:active { background: var(--bg-card); }

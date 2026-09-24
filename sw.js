@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mail-organizer-v4';
+const CACHE_NAME = 'mail-organizer-v5';
 const URLS_TO_CACHE = [
     '/',
     '/index.html',
