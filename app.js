@@ -516,7 +516,21 @@
         if (removeBtn) { moveMailToGroup(removeBtn.dataset.remove, ''); return; }
 
         const copyBtn = e.target.closest('.copy-btn');
-        if (copyBtn) { copyToClipboard(copyBtn.dataset.copy); return; }
+        if (copyBtn) { 
+            copyToClipboard(copyBtn.dataset.copy); 
+            const card = copyBtn.closest('.mail-item');
+            if (card) {
+                const id = card.dataset.id;
+                const mail = mails.find(m => m.id === id);
+                if (mail && mail.status !== 'unchecked') {
+                    mail.status = 'unchecked';
+                    saveMails();
+                    const toggle = document.querySelector(`.toggle-switch[data-id="${id}"]`);
+                    if (toggle) toggle.classList.remove('on');
+                }
+            }
+            return; 
+        }
 
         const commentBtn = e.target.closest('.comment-btn');
         if (commentBtn) { openCommentModal(commentBtn.dataset.id); return; }

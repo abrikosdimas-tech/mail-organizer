@@ -1,10 +1,10 @@
-const CACHE_NAME = 'mail-organizer-v5';
+const CACHE_NAME = 'mail-organizer-v7';
 const URLS_TO_CACHE = [
-    '/',
-    '/index.html',
-    '/styles.css',
-    '/app.js',
-    '/manifest.json'
+    './',
+    './index.html',
+    './styles.css',
+    './app.js',
+    './manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -30,6 +30,6 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
         caches.match(event.request)
             .then(response => response || fetch(event.request))
-            .catch(() => caches.match('/index.html'))
+            .catch(() => caches.match('./index.html'))
     );
 });
